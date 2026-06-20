@@ -349,6 +349,10 @@ class EmailService(NotificationService):
 
 class SmsService(NotificationService):
     def create_notifier(self): return SmsNotifier()
+
+# Przykład użycia
+service = EmailService()
+service.notify("Zamówienie wysłane!")   # nie wiemy, że wewnątrz jest EmailNotifier
 ```
 - **Abstract Factory** – fabryka rodzin obiektów
 ```python
@@ -365,6 +369,10 @@ class WindowsFactory(UIFactory):
 class MacFactory(UIFactory):
     def create_button(self): return "Mac Button"
     def create_checkbox(self): return "Mac Checkbox"
+
+factory = WindowsFactory() if is_windows else MacFactory()
+button = factory.create_button()
+checkbox = factory.create_checkbox()
 ```
 
 - **Builder** – krokowe budowanie złożonego obiektu
@@ -393,6 +401,12 @@ class HouseBuilder:
     
     def build(self):
         return self.house
+
+house = (HouseBuilder()
+         .build_walls("brick")
+         .build_roof("tiles")
+         .add_windows(8)
+         .build())
 ```
 
 - **Prototype** – klonowanie
@@ -410,6 +424,9 @@ class Monster:
 
 goblin = Monster("Goblin", 50, 10)
 goblin_army = [goblin.clone() for _ in range(5)]
+
+original = Monster("Goblin", 50, 10)
+clones = [original.clone() for _ in range(10)]
 ```
 
 - **Singleton** – jedna instancja (często anti-pattern)
@@ -422,6 +439,10 @@ class Logger:
             cls._instance = super().__new__(cls)
             cls._instance.logs = []
         return cls._instance
+
+logger = Logger()        # zawsze ta sama instancja
+logger2 = Logger()
+print(logger is logger2)  # True
 ```
 
 ### Strukturalne
@@ -440,6 +461,10 @@ class PaymentAdapter(NewPaymentInterface):
     
     def make_payment(self, amount):
         return self.old.pay(amount)
+
+old_system = OldPaymentSystem()
+adapter = PaymentAdapter(old_system)
+adapter.make_payment(100)   # używa nowego interfejsu
 ```
 
 - **Bridge** – oddzielenie abstrakcji od implementacji
@@ -458,6 +483,9 @@ class Shape(ABC):
 
 class Circle(Shape):
     def draw(self): return self.renderer.render("Circle")
+
+circle = Circle(VectorRenderer())
+circle.draw()
 ```
 
 - **Composite** – drzewo (liść = kompozyt)
@@ -474,6 +502,11 @@ class Composite(Component):
     def add(self, child): self.children.append(child)
     def operation(self):
         return f"Composite: {[c.operation() for c in self.children]}"
+
+folder = Composite()
+folder.add(Leaf())
+folder.add(Composite())   # drzewo
+folder.operation()
 ```
 
 - **Decorator** – dynamiczne dodawanie zachowań
@@ -487,6 +520,10 @@ class MilkDecorator(Coffee):
         self.coffee = coffee
     def cost(self): return self.coffee.cost() + 2
     def description(self): return self.coffee.description() + " + Milk"
+
+coffee = MilkDecorator(SugarDecorator(SimpleCoffee()))
+print(coffee.description())   # Coffee + Sugar + Milk
+print(coffee.cost())          # 9
 ```
 
 - **Facade** – uproszczenie podsystemu
@@ -502,6 +539,9 @@ class HomeTheaterFacade:
         self.projector.on()
         self.sound.on()
         print("Film started!")
+
+theater = HomeTheaterFacade(lights, projector, sound)
+theater.watch_movie()   # jedna metoda zamiast wielu
 ```
 
 - **Proxy** – kontrola dostępu / lazy
@@ -516,6 +556,9 @@ class ImageProxy:
         if not self.real:
             self.real = RealImage()
         self.real.display()
+
+image = ImageProxy("photo.jpg")
+image.display()   # ładuje się dopiero przy pierwszym wywołaniu
 ```
 
 - **Flyweight** – oszczędność pamięci
@@ -533,6 +576,9 @@ class TreeFactory:
         if key not in TreeFactory._trees:
             TreeFactory._trees[key] = TreeType(name, color)
         return TreeFactory._trees[key]
+
+tree1 = TreeFactory.get_tree("Pine", "green")
+tree2 = TreeFactory.get_tree("Pine", "green")   # ten sam obiekt
 ```
 
 ### Behawioralne
@@ -543,6 +589,9 @@ class Handler(ABC):
         self.next = next
     def handle(self, request):
         if self.next: return self.next.handle(request)
+
+pipeline = AuthMiddleware(RateLimitMiddleware(ValidationMiddleware()))
+pipeline.handle(request)
 ```
 
 - **Command** – akcja jako obiekt (`execute` + `undo`)
@@ -557,6 +606,10 @@ class LightOnCommand(Command):
     def __init__(self, light): self.light = light
     def execute(self): return self.light.on()
     def undo(self): return self.light.off()
+
+remote = RemoteControl()
+remote.submit(LightOnCommand(light))
+remote.undo_last()
 ```
 
 - **Iterator**
@@ -566,6 +619,9 @@ class Iterator(ABC):
     def next(self): ...
     @abstractmethod
     def has_next(self): ...
+
+for item in my_collection:   # Python używa iteratora pod maską
+    print(item)
 ```
 
 - **Mediator**
@@ -577,6 +633,9 @@ class ChatRoom:
         for user in self.users:
             if user != sender:
                 user.receive(message)
+            
+chat = ChatRoom()
+user1.send("Cześć", chat)
 ```
 
 - **Memento** – snapshot stanu
@@ -588,6 +647,10 @@ class Originator:
     def __init__(self): self.state = "initial"
     def save(self): return Memento(self.state)
     def restore(self, memento): self.state = memento.state
+
+editor = TextEditor()
+snapshot = editor.save()   # memento
+editor.restore(snapshot)
 ```
 
 - **Observer** – pub/sub
@@ -602,6 +665,11 @@ class Subject:
     def notify(self, event):
         for obs in self.observers:
             obs.update(event)
+    
+sensor = MotionSensor()
+sensor.subscribe(AlarmObserver())
+sensor.subscribe(LightObserver())
+sensor.detect()
 ```
 
 - **State** – zachowanie zależne od stanu
@@ -612,6 +680,10 @@ class State(ABC):
 
 class OffState(State):
     def press(self): return OnState(), "turning on"
+
+player = Player()   # zaczyna w OffState
+player.press()      # -> OnState
+player.press()      # -> StandbyState
 ```
 
 - **Strategy** – wymienny algorytm
@@ -622,6 +694,10 @@ class SortStrategy(ABC):
 
 class QuickSort(SortStrategy):
     def sort(self, data): return sorted(data)
+
+heater = Heater(EcoStrategy())
+heater.set_strategy(ComfortStrategy())
+heater.run(current_temp)
 ```
 
 - **Template Method**
@@ -634,6 +710,9 @@ class Algorithm(ABC):
     
     @abstractmethod
     def step1(self): ...
+
+etl_job = SalesEtlJob()
+etl_job.run()   # szkielet: extract → transform → load
 ```
 
 - **Visitor**
@@ -644,6 +723,9 @@ class Visitor(ABC):
 
 class Circle:
     def accept(self, visitor): visitor.visit_circle(self)
+
+ast_node.accept(CodeGeneratorVisitor())
+ast_node.accept(PrettyPrinterVisitor())
 ```
 
 - **Interpreter**
@@ -655,6 +737,9 @@ class Expression(ABC):
 class Number(Expression):
     def __init__(self, value): self.value = value
     def interpret(self, context): return self.value
+
+query = And(Equals("status", "paid"), GreaterThan("total", 100))
+query.matches(row)
 ```
 
 ---
