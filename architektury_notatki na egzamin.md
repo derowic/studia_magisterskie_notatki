@@ -512,18 +512,38 @@ folder.operation()
 - **Decorator** – dynamiczne dodawanie zachowań
 ```python
 class Coffee:
-    def cost(self): return 5
-    def description(self): return "Coffee"
+    def cost(self): 
+        return 5
+    def description(self): 
+        return "Coffee"
 
-class MilkDecorator(Coffee):
+# Klasa bazowa dla dodatków (ułatwia tworzenie kolejnych dekoratorów)
+class CoffeeDecorator(Coffee):
     def __init__(self, coffee):
         self.coffee = coffee
-    def cost(self): return self.coffee.cost() + 2
-    def description(self): return self.coffee.description() + " + Milk"
 
-coffee = MilkDecorator(SugarDecorator(SimpleCoffee()))
-print(coffee.description())   # Coffee + Sugar + Milk
-print(coffee.cost())          # 9
+# Dekorator dodający mleko
+class MilkDecorator(CoffeeDecorator):
+    def cost(self): 
+        return self.coffee.cost() + 2
+    def description(self): 
+        return self.coffee.description() + " + Milk"
+
+# Dekorator dodający cukier (brakujący element w Twoim kodzie)
+class SugarDecorator(CoffeeDecorator):
+    def cost(self): 
+        return self.coffee.cost() + 1
+    def description(self): 
+        return self.coffee.description() + " + Sugar"
+
+
+# Przygotowanie zamówienia: Kawa bazowa -> Cukier -> Mleko
+coffee = MilkDecorator(SugarDecorator(Coffee()))
+
+# Wyświetlenie wyników
+print(coffee.description())   # Wynik: Coffee + Sugar + Milk
+print(coffee.cost())          # Wynik: 8 (5 za kawę + 1 za cukier + 2 za mleko)
+
 ```
 
 - **Facade** – uproszczenie podsystemu
@@ -584,44 +604,159 @@ tree2 = TreeFactory.get_tree("Pine", "green")   # ten sam obiekt
 ### Behawioralne
 - **Chain of Responsibility** – łańcuch handlerów
 ```python
-class Handler(ABC):
-    def __init__(self, next=None):
-        self.next = next
-    def handle(self, request):
-        if self.next: return self.next.handle(request)
+from abc import ABC, abstractmethod
 
+# 1. Klasa bazowa dla obsługi żądań
+class Handler(ABC):
+    def __init__(self, next_handler=None):
+        self.next = next_handler
+
+    @abstractmethod
+    def handle(self, request):
+        # Jeśli istnieje kolejny element w łańcuchu, przekaż mu żądanie
+        if self.next: 
+            return self.next.handle(request)
+        return "Żądanie przetworzone pomyślnie!"
+
+# 2. Konkretne klasy Middleware (odpowiedzialności)
+class ValidationMiddleware(Handler):
+    def handle(self, request):
+        print("[Walidacja] Sprawdzanie poprawności danych...")
+        if "data" not in request:
+            return "Błąd: Brak wymaganych danych w żądaniu."
+        return super().handle(request)
+
+class RateLimitMiddleware(Handler):
+    def handle(self, request):
+        print("[Rate Limit] Sprawdzanie limitu zapytań...")
+        if request.get("clicks", 0) > 100:
+            return "Błąd: Przekroczono limit zapytań (429 Too Many Requests)."
+        return super().handle(request)
+
+class AuthMiddleware(Handler):
+    def handle(self, request):
+        print("[Autoryzacja] Weryfikacja tokenu użytkownika...")
+        if not request.get("is_authenticated", False):
+            return "Błąd: Brak autoryzacji (401 Unauthorized)."
+        return super().handle(request)
+
+# 3. Przygotowanie przykładowego żądania (request)
+request = {
+    "is_authenticated": True,
+    "clicks": 50,
+    "data": "Hello World"
+}
+
+# 4. Budowanie i uruchomienie łańcucha (Pipeline)
+# Żądanie idzie od lewej do prawej: Auth -> RateLimit -> Validation
 pipeline = AuthMiddleware(RateLimitMiddleware(ValidationMiddleware()))
-pipeline.handle(request)
+wynik = pipeline.handle(request)
+
+print(f"\nStatus końcowy: {wynik}")
 ```
 
 - **Command** – akcja jako obiekt (`execute` + `undo`)
 ```python
+from abc import ABC, abstractmethod
+
+# 1. Interfejs Command
 class Command(ABC):
     @abstractmethod
-    def execute(self): ...
+    def execute(self): 
+        pass
     @abstractmethod
-    def undo(self): ...
+    def undo(self): 
+        pass
 
+# 2. Odbiorca (Receiver) - obiekt, na którym wykonywane są operacje
+class Light:
+    def on(self): 
+        return "Światło zostało włączone."
+    def off(self): 
+        return "Światło zostało wyłączone."
+
+# 3. Konkretne polecenie (Concrete Command)
 class LightOnCommand(Command):
-    def __init__(self, light): self.light = light
-    def execute(self): return self.light.on()
-    def undo(self): return self.light.off()
+    def __init__(self, light): 
+        self.light = light
+    def execute(self): 
+        return self.light.on()
+    def undo(self): 
+        return self.light.off()
 
+# 4. Wywoływacz (Invoker) - pilot pamiętający historię poleceń
+class RemoteControl:
+    def __init__(self):
+        self._history = []  # Stos do przechowywania wykonanych poleceń
+
+    def submit(self, command):
+        # Wykonaj polecenie i dodaj je do historii
+        wynik = command.execute()
+        print(f"[AKCJA] {wynik}")
+        self._history.append(command)
+
+    def undo_last(self):
+        # Jeśli historia nie jest pusta, cofnij ostatnie polecenie
+        if self._history:
+            ostatnie_polecenie = self._history.pop()
+            wynik = ostatnie_polecenie.undo()
+            print(f"[COFNIJ] {wynik}")
+        else:
+            print("[INFO] Brak operacji do cofnięcia.")
+
+# 5. Uruchomienie kodu
+light = Light()
 remote = RemoteControl()
-remote.submit(LightOnCommand(light))
-remote.undo_last()
+
+# Wykonanie polecenia
+remote.submit(LightOnCommand(light))  # Wynik: Światło zostało włączone.
+
+# Cofnięcie ostatniego polecenia
+remote.undo_last()                    # Wynik: Światło zostało wyłączone.
 ```
 
 - **Iterator**
 ```python
+from abc import ABC, abstractmethod
+
+# 1. Klasyczny interfejs (opcjonalny w Pythonie, ale definiujący kontrakt)
 class Iterator(ABC):
     @abstractmethod
-    def next(self): ...
-    @abstractmethod
-    def has_next(self): ...
+    def __next__(self): 
+        """Zwraca kolejny element lub podnosi StopIteration"""
+        pass
 
-for item in my_collection:   # Python używa iteratora pod maską
+# 2. Konkretny Iterator dla kolekcji
+class RadosnyIterator(Iterator):
+    def __init__(self, elementy):
+        self._elementy = elementy
+        self._indeks = 0
+
+    def __next__(self):
+        # Python nie używa has_next(). Brak elementów zgłasza się wyjątkiem StopIteration
+        if self._indeks < len(self._elementy):
+            wynik = self._elementy[self._indeks]
+            self._indeks += 1
+            return wynik
+        raise StopIteration
+
+# 3. Kolekcja (Iterable) - obiekt, po którym można iterować
+class MojaKolekcja:
+    def __init__(self):
+        self.lista_elementow = ["Kawa", "Kod", "Spanie"]
+
+    def __iter__(self):
+        # Metoda __iter__ musi zwrócić obiekt iteratora
+        return RadosnyIterator(self.lista_elementow)
+
+
+# 4. Uruchomienie kodu
+my_collection = MojaKolekcja()
+
+# Pętla for automatycznie wywoła __iter__(), a potem __next__() aż do StopIteration
+for item in my_collection:
     print(item)
+
 ```
 
 - **Mediator**
@@ -629,117 +764,490 @@ for item in my_collection:   # Python używa iteratora pod maską
 class ChatRoom:
     def __init__(self):
         self.users = []
+
+    def join(self, user):
+        """Dodaje użytkownika do pokoju czatowego"""
+        self.users.append(user)
+        user.chat_room = self
+
     def broadcast(self, sender, message):
+        """Rozsyła wiadomość do wszystkich oprócz nadawcy"""
         for user in self.users:
             if user != sender:
-                user.receive(message)
-            
+                user.receive(sender.name, message)
+
+class User:
+    def __init__(self, name):
+        self.name = name
+        self.chat_room = None
+
+    def send(self, message):
+        """Użytkownik wysyła wiadomość przez mediatora (pokój)"""
+        if self.chat_room:
+            print(f"[{self.name} wysyła]: {message}")
+            self.chat_room.broadcast(self, message)
+        else:
+            print(f"{self.name} nie jest w żadnym pokoju!")
+
+    def receive(self, sender_name, message):
+        """Metoda wywoływana przez pokój, gdy ktoś inny wyśle wiadomość"""
+        print(f"  -> [{self.name} odebrał od {sender_name}]: {message}")
+
+
+# 1. Tworzenie mediatora i użytkowników
 chat = ChatRoom()
-user1.send("Cześć", chat)
+user1 = User("Anna")
+user2 = User("Bartek")
+user3 = User("Cezary")
+
+# 2. Dołączanie użytkowników do czatu
+chat.join(user1)
+chat.join(user2)
+chat.join(user3)
+
+# 3. Wywołanie wysyłania wiadomości
+user1.send("Cześć wszystkim!")
+
 ```
 
 - **Memento** – snapshot stanu
 ```python
+# 1. Pamiątka (Memento) - przechowuje stan obiektu
 class Memento:
-    def __init__(self, state): self.state = state
+    def __init__(self, state):
+        self._state = state  # Stan jest ukryty (enkapsulacja)
 
-class Originator:
-    def __init__(self): self.state = "initial"
-    def save(self): return Memento(self.state)
-    def restore(self, memento): self.state = memento.state
+    def get_state(self):
+        return self._state
 
+
+# 2. Inicjator (Originator / TextEditor) - obiekt posiadający stan
+class TextEditor:
+    def __init__(self):
+        self.state = "pusta strona"
+
+    def wpisz_tekst(self, nowy_tekst):
+        self.state = nowy_tekst
+
+    def save(self):
+        """Tworzy pamiątkę z aktualnym stanem"""
+        print(f"[ZAPIS] Zapisuję stan: '{self.state}'")
+        return Memento(self.state)
+
+    def restore(self, memento):
+        """Przywraca stan z pamiątki"""
+        self.state = memento.get_state()
+        print(f"[PRZYWRÓCENIE] Stan przywrócony do: '{self.state}'")
+
+
+# 3. Zarządca (Caretaker) - pilnuje historii pamiątek (np. historia Ctrl+Z)
+class History:
+    def __init__(self):
+        self._snapshots = []
+
+    def push(self, memento):
+        self._snapshots.append(memento)
+
+    def pop(self):
+        if self._snapshots:
+            return self._snapshots.pop()
+            
+# 4. Uruchomienie kodu
 editor = TextEditor()
-snapshot = editor.save()   # memento
+history = History()
+
+# Modyfikacja stanu i zapis do historii
+editor.wpisz_tekst("Napisany artykuł")
+history.push(editor.save())  # Zapisujemy stan "Napisany artykuł"
+
+# Kolejna modyfikacja (np. przypadkowe usunięcie tekstu)
+editor.wpisz_tekst("Wszystko skasowane!")
+print(f"Aktualny stan edytora: '{editor.state}'")
+
+# Cofanie zmian (Ctrl+Z) przy użyciu pamiątki
+snapshot = history.pop()
 editor.restore(snapshot)
+
 ```
 
 - **Observer** – pub/sub
 ```python
+from abc import ABC, abstractmethod
+
+# 1. Interfejs Obserwatora
 class Observer(ABC):
     @abstractmethod
-    def update(self, event): ...
+    def update(self, event): 
+        pass
 
+# 2. Klasa bazowa Podmiotu (Subject)
 class Subject:
     def __init__(self):
         self.observers = []
+
+    def subscribe(self, observer):
+        """Rejestracja nowego obserwatora"""
+        if observer not in self.observers:
+            self.observers.append(observer)
+
+    def unsubscribe(self, observer):
+        """Wyrejestrowanie obserwatora"""
+        self.observers.remove(observer)
+
     def notify(self, event):
+        """Powiadomienie wszystkich obserwatorów o zdarzeniu"""
         for obs in self.observers:
             obs.update(event)
-    
+
+# 3. Konkretny Podmiot - Czujnik Ruchu
+class MotionSensor(Subject):
+    def detect(self):
+        event_message = "Wykryto ruch w salonie!"
+        print(f"\n[CZUJNIK] {event_message}")
+        # Wywołanie powiadomienia odziedziczonego z klasy Subject
+        self.notify(event_message)
+
+# 4. Konkretni Obserwatorzy
+class AlarmObserver(Observer):
+    def update(self, event):
+        print(f"  -> [ALARM] Uruchamiam syrenę! Powód: {event}")
+
+class LightObserver(Observer):
+    def update(self, event):
+        print(f"  -> [ŚWIATŁO] Włączam oświetlenie awaryjne! Powód: {event}")
+
+
+# 5. Uruchomienie kodu
 sensor = MotionSensor()
+
+# Subskrypcja systemów
 sensor.subscribe(AlarmObserver())
 sensor.subscribe(LightObserver())
+
+# Wyzwolenie zdarzenia
 sensor.detect()
+
 ```
 
 - **State** – zachowanie zależne od stanu
 ```python
+from abc import ABC, abstractmethod
+
+# 1. Interfejs Stanu
 class State(ABC):
     @abstractmethod
-    def press(self): ...
+    def press(self, player): 
+        """Przyjmuje obiekt player, aby móc zmienić jego stan"""
+        pass
 
+# 2. Konkretne Stany
 class OffState(State):
-    def press(self): return OnState(), "turning on"
+    def press(self, player):
+        print("[AKCJA] Włączanie urządzenia...")
+        player.set_state(OnState())
 
-player = Player()   # zaczyna w OffState
-player.press()      # -> OnState
-player.press()      # -> StandbyState
+class OnState(State):
+    def press(self, player):
+        print("[AKCJA] Przełączanie w tryb czuwania (Standby)...")
+        player.set_state(StandbyState())
+
+class StandbyState(State):
+    def press(self, player):
+        print("[AKCJA] Wyłączanie całkowite...")
+        player.set_state(OffState())
+
+# 3. Kontekst (Odtwarzacz)
+class Player:
+    def __init__(self):
+        # Odtwarzacz zaczyna w stanie OffState
+        self._state = OffState()
+        print(f"Inicjalizacja: Player jest w stanie {type(self._state).__name__}")
+
+    def set_state(self, state):
+        """Metoda pozwalająca stanom na zmianę stanu odtwarzacza"""
+        self._state = state
+        print(f" -> Nowy stan: {type(self._state).__name__}")
+
+    def press(self):
+        """Delegowanie zachowania do aktualnego obiektu stanu"""
+        self._state.press(self)
+
+
+# 4. Uruchomienie kodu (zgodnie z Twoim scenariuszem)
+player = Player()   # Zaczyna w OffState
+
+player.press()      # OffState -> OnState
+player.press()      # OnState -> StandbyState
+player.press()      # StandbyState -> OffState (zamknięcie pętli stanów)
+
 ```
 
 - **Strategy** – wymienny algorytm
 ```python
-class SortStrategy(ABC):
+from abc import ABC, abstractmethod
+
+# 1. Interfejs Strategii Grzewczej
+class HeatingStrategy(ABC):
     @abstractmethod
-    def sort(self, data): ...
+    def calculate_target_temp(self, current_temp):
+        pass
 
-class QuickSort(SortStrategy):
-    def sort(self, data): return sorted(data)
+# 2. Konkretne Strategie
+class EcoStrategy(HeatingStrategy):
+    def calculate_target_temp(self, current_temp):
+        print("[Strategia: ECO] Oszczędzanie energii.")
+        return 19.0  # Niska, ekonomiczna temperatura docelowa
 
+class ComfortStrategy(HeatingStrategy):
+    def calculate_target_temp(self, current_temp):
+        print("[Strategia: COMFORT] Maksymalny komfort domowników.")
+        return 22.5  # Wyższa, komfortowa temperatura docelowa
+
+# 3. Kontekst (Grzejnik / Heater)
+class Heater:
+    def __init__(self, strategy: HeatingStrategy):
+        self._strategy = strategy  # Wstrzyknięcie domyślnej strategii
+
+    def set_strategy(self, strategy: HeatingStrategy):
+        """Dynamiczna zmiana strategii w czasie działania programu"""
+        print(f"\n[SYSTEM] Zmiana trybu pracy na {type(strategy).__name__}")
+        self._strategy = strategy
+
+    def run(self, current_temp):
+        """Wykonanie algorytmu wybranej strategii"""
+        target_temp = self._strategy.calculate_target_temp(current_temp)
+        print(f"Aktualna temperatura: {current_temp}°C")
+        print(f"Temperatura docelowa: {target_temp}°C")
+        
+        if current_temp < target_temp:
+            print(">> STATUS: Grzejnik WŁĄCZONY (Grzanie...)")
+        else:
+            print(">> STATUS: Grzejnik WYŁĄCZONY (Temperatura osiągnięta)")
+
+
+# 4. Uruchomienie kodu (zgodnie z Twoim scenariuszem)
+current_temp = 20.0
+
+# Inicjalizacja grzejnika ze strategią Eco
 heater = Heater(EcoStrategy())
+heater.run(current_temp)
+
+# Dynamiczna zmiana strategii na Comfort w trakcie pracy
 heater.set_strategy(ComfortStrategy())
 heater.run(current_temp)
+
 ```
 
 - **Template Method**
 ```python
-class Algorithm(ABC):
-    def template_method(self):
-        self.step1()
-        self.step2()
-        self.step3()
-    
-    @abstractmethod
-    def step1(self): ...
+from abc import ABC, abstractmethod
 
+# 1. Klasa bazowa definiująca szkielet algorytmu
+class BaseEtlJob(ABC):
+    def run(self):
+        """Metoda Szablonowa - definiuje niezmienny szkielet procesu"""
+        print(f"=== Uruchamianie procesu ETL: {self.__class__.__name__} ===")
+        self.extract()
+        self.transform()
+        self.load()
+        print("=== Proces zakończony sukcesem ===\n")
+
+    @abstractmethod
+    def extract(self):
+        pass
+
+    @abstractmethod
+    def transform(self):
+        pass
+
+    @abstractmethod
+    def load(self):
+        pass
+
+
+# 2. Konkretna implementacja dla danych sprzedażowych
+class SalesEtlJob(BaseEtlJob):
+    def extract(self):
+        print("[Krok 1/3] Pobieranie danych sprzedażowych z bazy SQL...")
+
+    def transform(self):
+        print("[Krok 2/3] Czyszczenie danych: konwersja walut i usuwanie duplikatów...")
+
+    def load(self):
+        print("[Krok 3/3] Ładowanie przetworzonych danych do Hurtowni Danych...")
+
+
+# 3. Inna przykładowa implementacja (pokazuje elastyczność wzorca)
+class MarketingEtlJob(BaseEtlJob):
+    def extract(self):
+        print("[Krok 1/3] Pobieranie logów z API Google Analytics...")
+
+    def transform(self):
+        print("[Krok 2/3] Agregacja kliknięć i obliczanie współczynnika konwersji...")
+
+    def load(self):
+        print("[Krok 3/3] Zapisywanie raportu do pliku CSV na serwerze S3...")
+
+
+# 4. Uruchomienie kodu (zgodnie z Twoim scenariuszem)
 etl_job = SalesEtlJob()
-etl_job.run()   # szkielet: extract → transform → load
+etl_job.run()
+
+# Testowanie drugiego zadania dla porównania
+marketing_job = MarketingEtlJob()
+marketing_job.run()
+
 ```
 
 - **Visitor**
 ```python
+from abc import ABC, abstractmethod
+
+# 1. Interfejs Wizytatora (Visitor)
 class Visitor(ABC):
-    def visit_circle(self, circle): ...
-    def visit_square(self, square): ...
+    @abstractmethod
+    def visit_circle(self, circle): pass
 
-class Circle:
-    def accept(self, visitor): visitor.visit_circle(self)
+    @abstractmethod
+    def visit_square(self, square): pass
 
+
+# 2. Interfejs Elementu akceptującego wizytę
+class Element(ABC):
+    @abstractmethod
+    def accept(self, visitor: Visitor): pass
+
+
+# 3. Konkretne Elementy struktury danych (np. figury geometryczne jako węzły AST)
+class Circle(Element):
+    def __init__(self, radius):
+        self.radius = radius
+
+    def accept(self, visitor: Visitor):
+        # Podwójne rozproszenie: element wywołuje dedykowaną metodę wizytatora
+        visitor.visit_circle(self)
+
+
+class Square(Element):
+    def __init__(self, side):
+        self.side = side
+
+    def accept(self, visitor: Visitor):
+        visitor.visit_square(self)
+
+
+# 4. Konkretni Wizytatorzy (Operacje wykonywane na strukturze)
+class CodeGeneratorVisitor(Visitor):
+    def visit_circle(self, circle):
+        print(f"[Generator] Generuję kod maszynowy dla koła o promieniu {circle.radius}")
+
+    def visit_square(self, square):
+        print(f"[Generator] Generuję kod maszynowy dla kwadratu o boku {square.side}")
+
+
+class PrettyPrinterVisitor(Visitor):
+    def visit_circle(self, circle):
+        print(f"[PrettyPrinter] ◯ Koło (r = {circle.radius})")
+
+    def visit_square(self, square):
+        print(f"[PrettyPrinter] ☐ Kwadrat (a = {square.side})")
+
+
+# 5. Uruchomienie kodu (Przetwarzanie węzła drzewa AST)
+# Tworzymy przykładowy węzeł (strukturę)
+ast_node = Circle(radius=5)
+
+# Przekazujemy strukturę do pierwszego wizytatora
 ast_node.accept(CodeGeneratorVisitor())
+
+# Przekazujemy tę samą strukturę do drugiego wizytatora
 ast_node.accept(PrettyPrinterVisitor())
+
 ```
 
 - **Interpreter**
 ```python
+from abc import ABC, abstractmethod
+
+# 1. Interfejs Wyrażenia (Expression)
 class Expression(ABC):
     @abstractmethod
-    def interpret(self, context): ...
+    def interpret(self, context: dict) -> bool:
+        """Interpretuje wyrażenie w odniesieniu do podanego kontekstu (wiersza danych)"""
+        pass
 
-class Number(Expression):
-    def __init__(self, value): self.value = value
-    def interpret(self, context): return self.value
+    def matches(self, row: dict) -> bool:
+        """Wygodny alias zgodny z Twoim wywołaniem"""
+        return self.interpret(row)
 
+
+# 2. Wyrażenia Terminalne (Terminal Expressions) - liście drzewa składniowego
+class Variable(Expression):
+    """Reprezentuje nazwę kolumny/klucza w słowniku (np. 'status', 'total')"""
+    def __init__(self, name):
+        self.name = name
+
+    def interpret(self, context: dict):
+        return context.get(self.name)
+
+
+class Constant(Expression):
+    """Reprezentuje stałą wartość (np. 'paid', 100)"""
+    def __init__(self, value):
+        self.value = value
+
+    def interpret(self, context: dict):
+        return self.value
+
+
+# 3. Wyrażenia Nieterminalne (Non-terminal Expressions) - węzły łączące inne wyrażenia
+class Equals(Expression):
+    """Sprawdza, czy wartość zmiennej jest równa stałej"""
+    def __init__(self, variable_name: str, constant_value):
+        self.variable = Variable(variable_name)
+        self.constant = Constant(constant_value)
+
+    def interpret(self, context: dict) -> bool:
+        return self.variable.interpret(context) == self.constant.interpret(context)
+
+
+class GreaterThan(Expression):
+    """Sprawdza, czy wartość zmiennej jest większa od stałej"""
+    def __init__(self, variable_name: str, constant_value):
+        self.variable = Variable(variable_name)
+        self.constant = Constant(constant_value)
+
+    def interpret(self, context: dict) -> bool:
+        try:
+            return self.variable.interpret(context) > self.constant.interpret(context)
+        except TypeError:
+            return False
+
+
+class And(Expression):
+    """Koniunkcja logiczna - oba warunki muszą być prawdziwe"""
+    def __init__(self, left: Expression, right: Expression):
+        self.left = left
+        self.right = right
+
+    def interpret(self, context: dict) -> bool:
+        return self.left.interpret(context) and self.right.interpret(context)
+
+
+# 4. Budowanie zapytania (Zgodnie z Twoim scenariuszem)
 query = And(Equals("status", "paid"), GreaterThan("total", 100))
-query.matches(row)
+
+# 5. Przygotowanie przykładowych danych (Kontekst)
+row_valid = {"status": "paid", "total": 250, "user": "Jan"}
+row_invalid = {"status": "pending", "total": 150, "user": "Anna"}
+
+# 6. Testowanie interpretera
+print(f"Czy row_valid spełnia warunki? -> {query.matches(row_valid)}")
+# Wynik: True (status == paid ORAZ total > 100)
+
+print(f"Czy row_invalid spełnia warunki? -> {query.matches(row_invalid)}")
+# Wynik: False (status != paid)
+
 ```
 
 ---
